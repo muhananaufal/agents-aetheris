@@ -265,5 +265,16 @@ Seluruh komponen dalam ekosistem ini diaudit secara berkala dengan garansi:
 * ✅ **Zero Untyped Bypasses & Zero Hardcoded Secrets**.
 * ✅ **100% Conventional Commits Compliance** dengan Dual-Avatar Attribution.
 
+## 🤝 Contributing
+
+We welcome contributions! Please feel free to submit a Pull Request or open an Issue to discuss potential changes.
+All tests must pass in the CI/CD pipeline before merging.
+
+## 📜 License
+
+This project is licensed under the [MIT License](LICENSE) © 2026 muhananaufal.
+
 ---
-*Dikelola dan dirawat oleh AETHERIS Autonomous Engineering Team.*
+<p align="center">
+  <i>Built with precision for Go Artisans by AETHERIS.</i>
+</p>
