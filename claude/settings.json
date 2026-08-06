@@ -1,0 +1,72 @@
+{
+  "theme": "dark",
+  "tui": "fullscreen",
+  "permissions": {
+    "ask": [
+      "Edit(~/.claude/CLAUDE.md)"
+    ],
+    "allow": [
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(git branch *)",
+      "Bash(git remote -v)",
+      "Bash(go test *)",
+      "Bash(go build *)",
+      "Bash(go vet *)",
+      "Bash(go mod *)",
+      "Bash(golangci-lint run *)",
+      "Bash(cargo test *)",
+      "Bash(cargo build *)",
+      "Bash(cargo check *)",
+      "Bash(cargo clippy *)",
+      "Bash(cargo fmt *)",
+      "Bash(npm run *)",
+      "Bash(npm install)",
+      "Bash(npm ci)",
+      "Bash(npm list *)",
+      "Bash(npm info *)",
+      "Bash(pnpm run *)",
+      "Bash(pnpm install)",
+      "Bash(pnpm test *)",
+      "Bash(php artisan test *)",
+      "Bash(php artisan route:list *)",
+      "Bash(php artisan migrate:status)",
+      "Bash(composer install)",
+      "Bash(composer test *)",
+      "Bash(vendor/bin/phpunit *)",
+      "Bash(vendor/bin/pest *)",
+      "PowerShell(Get-ChildItem *)",
+      "PowerShell(Get-Content *)",
+      "PowerShell(Test-Path *)",
+      "PowerShell(Select-String *)",
+      "PowerShell(Measure-Object *)",
+      "PowerShell(git status *)",
+      "PowerShell(git diff *)",
+      "PowerShell(git log *)",
+      "PowerShell(git show *)"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe",
+            "args": [
+              "-NoProfile",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-File",
+              "C:\\Users\\muhan\\.gemini\\config\\scripts\\stop_gate_claude.ps1"
+            ],
+            "timeout": 60,
+            "statusMessage": "Quality gate"
+          }
+        ]
+      }
+    ]
+  }
+}
