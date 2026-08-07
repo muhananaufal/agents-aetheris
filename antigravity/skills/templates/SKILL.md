@@ -7,6 +7,48 @@ description: Gunakan skill ini ketika menulis atau memperbarui artefak baku proy
 
 Kerangka di bawah WAJIB diikuti persis. §5 `AGENTS.md` menunjuk ke sini. Dokumen arsitektur dan perencanaan bukan sekadar formalitas, melainkan instrumen pertahanan sistem (*defense-in-depth*) untuk menjamin nol *downtime*, nol *data corruption*, dan kepastian *failure modes*.
 
+## 🔗 Posisi dalam Rantai Kerja
+
+Skill ini dipakai **dua kali**: di tahap 3 untuk menulis rencana, dan di tahap 6 untuk membuktikan hasilnya.
+
+| # | Tahap | Dokumen |
+| :-: | :--- | :--- |
+| 1 | Routing task | `AGENTS.md` §2 |
+| 2 | Pilih stack & arsitektur | `master-decision-tree/SKILL.md` |
+| 3 | **Tulis `docs/rfc/YYYYMMDD-<fitur>.md` + katalog** | **`templates/SKILL.md` bagian 1–2 — Anda di sini** |
+| 4 | **BERHENTI — tunggu user mengetik "Gasskan"** | `AGENTS.md` §0.5 · **GERBANG MUTLAK** |
+| 5 | Branch, atomic commit, merge | `git-workflow/SKILL.md` bagian 1–5 |
+| 6 | **Patch Receipt + centang Kanban di RFC** | **`templates/SKILL.md` bagian 6 — Anda di sini lagi** |
+
+> Nomor **§** selalu merujuk `AGENTS.md`. Untuk seksi milik skill lain dipakai kata "bagian".
+
+**Empat rute §2 `AGENTS.md` MENGGUGURKAN tahap 3–4. DILARANG memaksakan RFC di sana:**
+
+| Rute §2 | Yang berlaku |
+| :--- | :--- |
+| Proyek baru **kecil** (4 syarat §2) | RFC & Day-0 Quintet DILARANG dipaksakan → langsung tahap 5 |
+| Edit **≤3 berkas**, bugfix, refactor minor, investigasi | DILARANG bikin RFC → langsung tahap 5. Bugfix tetap WAJIB Proof-of-Defect (§0.6) |
+| **In-Flight Fix** — >3 berkas tapi berasal dari RFC yang SUDAH disetujui | **DILARANG buat RFC kedua.** Catat perubahannya di seksi task RFC yang sedang aktif |
+| **Emergency Pause** — blocker arsitektural kritis di tengah eksekusi | BERHENTI. Susun `docs/rca/YYYYMMDD-<insiden>.md` (bagian 3 di bawah), lapor ke user, jangan putuskan sepihak |
+
+**Tiga sambungan yang WAJIB dijaga konsisten:**
+- Field **Target Branch** (bagian 1 di bawah) WAJIB memakai konvensi penamaan `git-workflow/SKILL.md` bagian 1 (Git Flow), dan WAJIB sama persis dengan branch yang benar-benar dibuat.
+- Opsi di **§2 Eksplorasi Arsitektur** adalah keluaran `master-decision-tree/SKILL.md` — DILARANG mengarang opsi tanpa melewati pohon itu.
+- Tiap **Batch** di §4 memetakan ke satu atau lebih commit atomik (`git-workflow` §5); status `[x]` hanya boleh dicentang setelah batch itu lolos Quality Gate **dan** ter-commit.
+
+---
+
+## 0. All-Out Principal Planning Protocol (The AETHERIS Master Key Formula)
+
+Saat merancang arsitektur baru, membuat fitur rumit, atau menyusun Grand Blueprint / RFC, AI dan Subagent **WAJIB MENGETINGGALKAN SELURUH PEMBATASAN KETAT ONGKOS TOKEN DALAM MENJAWAB**. Anggaplah pesan *default* user senantiasa berbunyi: *"Silakan memasak, time is yours. Buatkan paling lengkap dari 5W1H dengan penanganan semua edge cases tanpa terkecuali."*
+
+### 5 Pilar Wajib (L8 Principal Standard):
+1. **First-Principles & 5W1H:** Jangan pernah melompat ke sintaks tanpa merancang landasan filosofis mengapa arsitektur atau teknologi tersebut dipilih.
+2. **Adversarial Anticipation:** Jangan mengacu pada *happy-path*. Bangun desain dengan asumsi akan diuji/dibantai oleh pengamat teknikal kritis; setiap pilihan teknikal wajib disertai justifikasi mendalam dan analisis trade-off jujur.
+3. **Exhaustive Inventory Grounding (Anti-Zero-Shot):** Lakukan audit referensi lokal (`references/`) dan sumber daya eksisting untuk memaparkan seluruh entitas/opsi domain komplit ke dalam klaster taksonomi spesifik sebelum merinci abstraksi kodenya. Hal ini menjamin 0% pemotongan karena *lost-in-the-middle bias*.
+4. **Zero-Exception Anomaly Hunting (Edge Cases):** Pada setiap dokumen perancangan, eksplorasi kasus tepi (*edge cases*) tidak boleh diabaikan atau diringkas dengan `// dll`. WAJIB memetakan minimal 5–10 anomali operasional (disk penuh, permission denied, race condition, network disconnect, korupsi konfigurasi, koneksi terputus, atau anomali struktur folder legacy) beserta mitigasi eksplisitnya.
+5. **Visual Architecture Blueprinting (Mermaid Grounding):** DILARANG menjelaskan alur sistem multi-komponen, state machine, atau skema database kompleks hanya dengan teks tebal/ASCII biasa. WAJIB mempresentasikan diagram visual eksplisit dalam blok kode `mermaid` (Flowchart, Sequence Diagram, atau ERD/Class Diagram) agar arsitektur tergambar presisi, tidak ambigu, dan siap untuk audit klinis.
+
 ---
 
 ## 1. `docs/rfc/YYYYMMDD-<nama-fitur>.md` (All-in-One RFC / PRD / Batch Task)
@@ -17,12 +59,19 @@ Dokumen tunggal terpadu untuk perancangan fitur baru, refactor besar, atau inisi
 # RFC: <Judul Fitur atau Inisiatif Sistem>
 
 - **Status:** `PROPOSED` | `ACCEPTED` | `IMPLEMENTED` | `SUPERSEDED`
+- **RFC Tier (T-Shirt Size):** `Tier 1 (Full RFC)` | `Tier 2 (Mini RFC 1-Pager)`
+  <!-- Tier 1: Perubahan arsitektur/DB, high-load, breaking API. Tier 2: Penambahan endpoint sederhana, minor rework -->
 - **Tanggal:** YYYY-MM-DD
 - **Target Branch:** `feature/<nama-fitur>`
+- **RACI Governance Matrix (Top 1% VP Standard):**
+  - **Responsible (Author):** AI Main Agent / Lead Engineer
+  - **Accountable (Approver):** User / Principal Architect (Menunggu kata "Gasskan")
+  - **Consulted (Security & QA):** Adversarial QA Subagent / Domain Mastery Reference
+  - **Informed (Stakeholders):** Tim Operasional, Tim Frontend, Tim Support
 
 ---
 
-## 1. Konteks & Problem Statement (PRD Core)
+## 1. Konteks & Problem Statement (PRD & AWS Working Backwards Core)
 - **Latar Belakang & Urgensi:** <!-- Masalah nyata yang dipecahkan, dampak bisnis/sistem, dan alasan kenapa harus dikerjakan sekarang -->
 - **Scope Boundaries:**
   - **IN-SCOPE:** <!-- Fitur, modul, endpoint, dan kapabilitas konkret yang akan dibangun -->
@@ -31,6 +80,10 @@ Dokumen tunggal terpadu untuk perancangan fitur baru, refactor besar, atau inisi
   - **Target Throughput / Load:** `[fakta/inferensi/spekulasi]` <!-- misal: 2.500 RPS peak, 50jt records/hari -->
   - **Latency SLA:** `p95 < 50ms`, `p99 < 150ms`
   - **Asumsi Sistem & Tenant:** <!-- B2B/B2C, multi-tenant RLS, single-region/multi-region, RPO/RTO target -->
+- **AWS Working Backwards (Adversarial PR/FAQ & Buy vs. Build Justification):**
+  - **Buy vs. Build vs. Partner:** <!-- Justifikasi klinis mengapa merakit di internal ketimbang adopsi SaaS / Open-Source library eksisting ("Code is a liability") -->
+  - **FAQ 1: Apa yang terjadi bila beban trafik melonjak 5x dari asumsi awal dalam semalam?** -> <!-- Evaluasi elastisitas sistem & bottleneck kritis -->
+  - **FAQ 2: Bagaimana fallback experience bagi pelanggan jika dependensi pihak ketiga (payment, SSO, broker) mengalami outage mati total?** -> <!-- Degradasi graceful (202 Accepted / offline cache) -->
 
 ---
 
@@ -58,20 +111,44 @@ Dokumen tunggal terpadu untuk perancangan fitur baru, refactor besar, atau inisi
 ---
 
 ## 3. Spesifikasi Teknis & Desain Sistem Terpilih
-### 3.1 Data Model & Zero-Downtime Migration Strategy
+### 3.1 Topologi & Visualisasi Arsitektur (Mermaid Blueprint)
+<!-- WAJIB menyajikan minimal 1 diagram visual interaktif dalam blok kode `mermaid` (Sequence Diagram, Flowchart, atau ERD) yang memetakan interaksi antar komponen, alur request/event, atau relasi entitas -->
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client / Ingress
+    participant API as API Gateway / Handler
+    participant S as Domain Service (Tx)
+    participant DB as PostgreSQL (ACID)
+    participant Q as Durable Queue / Broker
+    
+    C->>API: POST /api/v1/resource (Idempotency-Key)
+    API->>S: Validate & Execute Command
+    S->>DB: Begin ACID Transaction & Mutate State
+    DB-->>S: State Committed (200 OK)
+    S->>Q: Dispatch Durable Event (Outbox Pattern)
+    API-->>C: 201 Created (Response DTO)
+```
+
+### 3.2 Data Model & Zero-Downtime Migration Strategy
 - **Schema DDL & Entities:** <!-- Tabel baru, kolom baru, indeks, dan tipe data -->
 - **Pola Migrasi DB:** `Expand and Contract Pattern` <!-- Tahap 1: Tambah kolom nullable; Tahap 2: Dual-write & backfill; Tahap 3: Contract/Drop kolom usang -->
 - **Data Consistency & Isolation:** <!-- ACID Transaction boundary, isolation level (Read Committed / Serializable), Lock strategy (Optimistic / Pessimistic) -->
 
-### 3.2 Kontrak API & Event Interface
+### 3.3 FinOps, Unit Economics & Data Lifecycle (TTL & Cold Storage)
+- **Unit Economics Target:** <!-- Perhitungan estimasi ongkos komputasi/storage, misal: < $0.05 per 1.000 request atau $2 / active tenant / bulan -->
+- **Data Retention & Pruning Strategy (TTL):** <!-- Kapan data operasional dihapus atau di-prune agar tabel tidak meledak ruah (misal: log event dibersihkan setelah 30 hari) -->
+- **Cold Storage Archival:** <!-- Kebijakan pemindahan data historis mati ke storage berbiaya rendah (S3 Glacier / parquet dump) paska 90 hari -->
+
+### 3.4 Kontrak API & Event Interface
 - **Endpoint / Protobuf / Message Payload:** <!-- Request/Response schema, Error codes, Header Idempotency-Key -->
 - **Backward Compatibility:** <!-- Jaminan nol breaking changes terhadap client/consumer eksisting -->
 
-### 3.3 Penanganan Konkurensi, Race Conditions & Failure Domains
+### 3.5 Penanganan Konkurensi, Race Conditions & Failure Domains
 - **Idempotency & Deduplication:** <!-- Pencegahan double-spending / double-execution (Idempotency Key, Unique Constraint, Distributed Lock) -->
 - **Failure & Degradation Modes:** <!-- Circuit breaker, fallback cache, timeout handling saat downstream service mati -->
 
-### 3.4 STRIDE Threat Model & Security Perimeter
+### 3.6 STRIDE Threat Model & Security Perimeter
 | Vektor Ancaman STRIDE | Potensi Celah / Skenario Serangan | Mitigasi Arsitektural & Guardrails |
 | :--- | :--- | :--- |
 | **Spoofing** (Pemalsuan identitas) | Peniruan caller / fake client token | Verifikasi JWT RS256 / HMAC Signature + Webhook Secret |
@@ -83,7 +160,11 @@ Dokumen tunggal terpadu untuk perancangan fitur baru, refactor besar, atau inisi
 
 ---
 
-## 4. Rencana Eksekusi & Living Task Checklist (DAG & Batch Protocol §7)
+## 4. Rencana Eksekusi & Living Task Checklist (DAG & Batch Protocol)
+<!-- Sumber aturan: `AGENTS.md` §7 di Antigravity, `shared/tool-claude-code.md` CC-1b di Claude Code.
+     DILARANG menunjuk §7 sendirian - section itu dinyatakan DIABAIKAN di Claude Code, sehingga
+     penunjuk tunggal membuat DAG, Contract-First, dan Batch Writing tampak gugur di sana. -->
+
 <!-- ATURAN KANBAN: Maksimal 2 item berstatus [/] (WIP) bersamaan. Centang [x] setelah batch terverifikasi -->
 
 ### Batch 1: Schema Locking & Contract Initialization
@@ -125,13 +206,17 @@ Dokumen tunggal terpadu untuk perancangan fitur baru, refactor besar, atau inisi
 
 ---
 
-## 6. Prosedur Rollback & Canary Strategy
+## 6. Prosedur Rollback, On-Call Runbook & Cross-Functional Blast Radius
+- **Cross-Functional & Downstream Blast Radius (VP Standard):**
+  - **Upstream / Downstream Services Terdampak:** <!-- Daftar service atau antarmuka yang akan putus/melambat apabila fitur ini mengalami crash atau latency spike -->
+  - **Customer Support Triage Guidance:** <!-- Skrip penjelasan & status code apa yang harus disampaikan tim support jika user mengalami transaksi pending/gagal -->
 - **Feature Flag / Canary Ramp-up:** `FLAG_NAME` <!-- Default OFF -> 5% -> 25% -> 100% -->
 - **Pemicu Rollback (Rollback Triggers):** Error rate > 0.5% atau p99 latency > 250ms selama 2 menit berturut-turut.
-- **Langkah Rollback Cepat:**
-  1. Matikan feature flag / revert service deploy.
-  2. Perintah rollback skema DB (aman dieksekusi karena skema backward-compatible): `migrate down 1`.
-  3. Verifikasi status kesehatan downstream service.
+- **Langkah Rollback & 3 AM On-Call Emergency Runbook:**
+  1. **Triase Cepat:** Periksa dashboard RED metric & structured log pada `trace_id` terkait. Jika error rate memuncak, langsung lakukan mitigasi step 2 tanpa menunggu persetujuan.
+  2. **Matikan Feature Flag / Revert Traffic:** Kembalikan traffic ke jalur eksisting / revert service image kubernetes ke previous release.
+  3. **Rollback Skema DB:** Eksekusi migrasi mundur (aman karena skema backward-compatible): `migrate down 1`.
+  4. **Verifikasi Kesehatan:** Konfirmasikan pemulihan status kesehatan downstream service & bersihkan dead-letter queue (DLQ) jika diperlukan.
 ```
 
 ---
@@ -143,14 +228,16 @@ Wajib berada di `docs/rfc/README.md`. Bertindak sebagai registri arsitektur sent
 ```markdown
 # 📚 RFC Architecture Catalog & Master Index
 
-Dokumentasi rancangan arsitektur, keputusan sistem (ADR), dan riwayat implementasi teknis.
+Dokumentasi rancangan arsitektur, keputusan sistem (ADR), dan riwayat implementasi teknis berstandar Top 1% Vice Principal Engineering (L8/L9).
 
-| RFC ID | Inisiatif Fitur / Arsitektur | Domain / Modul | Target Branch | Status | Tanggal Rilis |
-| :--- | :--- | :--- | :--- | :---: | :---: |
-| `20260801` | [Order State Machine](20260801-order-state-machine.md) | Order / Core | `feature/order-sm` | `IMPLEMENTED` | 2026-08-01 |
-| `20260806` | [Payment Resilience & Idempotency](20260806-payment-idempotency.md) | Fintech | `feature/pay-retry` | `ACCEPTED` | 2026-08-06 |
+| RFC ID | Inisiatif Fitur / Arsitektur | Tier (T-Shirt) | Domain / Modul | Target Branch | Status | Tanggal Rilis |
+| :--- | :--- | :--- | :--- | :--- | :---: | :---: |
+| `20260801` | [Order State Machine](20260801-order-state-machine.md) | `Tier 1 (Full)` | Order / Core | `feature/order-sm` | `IMPLEMENTED` | 2026-08-01 |
+| `20260806` | [Payment Resilience & Idempotency](20260806-payment-idempotency.md) | `Tier 1 (Full)` | Fintech | `feature/pay-retry` | `ACCEPTED` | 2026-08-06 |
 
-### Panduan Siklus Status RFC:
+### Panduan Siklus Status & Klasifikasi RFC Tiering:
+* `Tier 1 (Full RFC)`: Perubahan arsitektur sistem baru, pemecahan monolit, migrasi skema DB berisiko tinggi, atau breaking API. Menggunakan seluruh 6 Bab kerangka lengkap.
+* `Tier 2 (Mini RFC 1-Pager)`: Penambahan endpoint lokal non-breaking, optimasi query minor, atau tweak internal modul. Dipadatkan dalam <2 halaman dengan tetap mematuhi gerbang mutu.
 * `PROPOSED`: Sedang dalam tahap perancangan & review (menunggu "Gasskan").
 * `ACCEPTED`: Telah disetujui user ("Gasskan"), siap/sedang dieksekusi.
 * `IMPLEMENTED`: Seluruh batch task tuntas dan lolos Quality Gate.
@@ -234,13 +321,21 @@ Wajib berada di root repositori. Memetakan arsitektur nyata, kepemilikan data, d
 | `auth` | Token issuance, RBAC, SSO session | `internal/auth/` | `users`, `roles`, `permissions` | `database`, `cache` |
 | `order` | Order state machine & checkout | `internal/order/` | `orders`, `order_items` | `auth`, `payment_client` |
 
-## 3. Alur Kritis (End-to-End Trace)
-<!-- Alur request masuk s/d respons kembali, sebutkan file & method spesifik -->
+## 3. Alur Kritis & Visualisasi Topologi (End-to-End Trace)
+<!-- Alur request masuk s/d respons kembali, sebutkan file & method spesifik serta sertakan diagram alur `mermaid` -->
 1. Ingress Request: `POST /api/v1/orders` -> `internal/transport/http/order_handler.go:CreateOrder`
 2. Autentikasi & Zero-Trust Guard -> `internal/middleware/auth_jwt.go`
 3. Domain Validation & ACID Tx -> `internal/order/service.go:ProcessOrder`
 4. State Mutation -> `internal/order/repository.go` (table `orders`)
 5. Asynchronous Event Dispatch -> `internal/outbox/publisher.go:PublishOrderCreated`
+
+```mermaid
+flowchart TD
+    A["POST /api/v1/orders"] -->|JWT Guard| B["order_handler:CreateOrder"]
+    B -->|ACID Tx| C["order_service:ProcessOrder"]
+    C -->|Mutate| D[("DB: orders table")]
+    C -->|Outbox Event| E["publisher:PublishOrderCreated"]
+```
 
 ## 4. Kontrak Eksternal & Integrasi
 | Interface | Tipe | Format / Protocol | Idempotency Support | Timeout / SLA |

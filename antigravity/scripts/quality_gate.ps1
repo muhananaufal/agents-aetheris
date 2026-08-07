@@ -19,12 +19,23 @@ param(
 $ErrorActionPreference = 'Continue'
 $violations = New-Object System.Collections.Generic.List[string]
 
-$CODE_EXT = @('.go','.rs','.php','.ts','.tsx','.js','.jsx','.mjs','.cjs','.py','.java','.cs','.rb','.sql','.sh','.ps1','.yaml','.yml')
+# .json IKUT dipindai. Berkas konfigurasi adalah tempat kredensial paling sering
+# menetap (mcp_config.json, appsettings.json, firebase.json, serviceAccount.json),
+# dan tanpa ekstensi ini seluruh kelas kebocoran itu tak terlihat oleh gate.
+$CODE_EXT = @('.go','.rs','.php','.ts','.tsx','.js','.jsx','.mjs','.cjs','.py','.java','.cs','.rb','.sql','.sh','.ps1','.yaml','.yml','.json')
 $SKIP_DIR = @('node_modules','vendor','target','dist','build','.git','.next','coverage','__pycache__','bin','obj')
 
 function Test-Skipped([string]$full) {
+    # Gate ini menyimpan pola deteksinya sebagai string literal, jadi memindai dirinya
+    # sendiri SELALU melaporkan pola itu sebagai temuan (mis. '-----BEGIN PRIVATE KEY-----'
+    # di dalam $SECRET_VALUE). Alat yang berteriak pada dirinya sendiri membuat seluruh
+    # laporannya diabaikan pengguna, jadi kecualikan diri sendiri secara eksplisit.
+    if ($PSCommandPath -and $full -eq $PSCommandPath) { return $true }
     foreach ($d in $SKIP_DIR) { if ($full -like "*\$d\*") { return $true } }
     if ($full -like '*.min.js') { return $true }
+    # Lockfile dihasilkan mesin, berukuran besar, dan penuh hash integritas.
+    # Memindainya membuang waktu tanpa pernah menemukan rahasia sungguhan.
+    if ($full -like '*-lock.json' -or $full -like '*.lock') { return $true }
     return $false
 }
 
@@ -126,7 +137,7 @@ foreach ($f in $targets) {
 # apiKey jadi legacyKey langsung membutakannya. Jalur BENTUK NILAI menangkap
 # kredensial sungguhan tanpa peduli nama variabelnya.
 $SECRET_NAME  = '(password|passwd|api[_-]?key|secret|token|access[_-]?key|private[_-]?key|auth|credential|conn(ection)?[_-]?str)\s*[:=]\s*["''][^"'']{8,}["'']'
-$SECRET_VALUE = 'sk_(live|test)_[A-Za-z0-9]{10,}|pk_live_[A-Za-z0-9]{10,}|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|glpat-[A-Za-z0-9_-]{15,}|AIza[0-9A-Za-z_-]{30,}|SG\.[A-Za-z0-9_-]{15,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|eyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}\.|mongodb(\+srv)?://[^:\s]+:[^@\s]+@|postgres(ql)?://[^:\s]+:[^@\s]+@|mysql://[^:\s]+:[^@\s]+@'
+$SECRET_VALUE = 'sk_(live|test)_[A-Za-z0-9]{10,}|pk_live_[A-Za-z0-9]{10,}|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|glpat-[A-Za-z0-9_-]{15,}|AIza[0-9A-Za-z_-]{30,}|AQ\.[A-Za-z0-9_-]{20,}|SG\.[A-Za-z0-9_-]{15,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|eyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}\.|mongodb(\+srv)?://[^:\s]+:[^@\s]+@|postgres(ql)?://[^:\s]+:[^@\s]+@|mysql://[^:\s]+:[^@\s]+@'
 foreach ($f in $targets) {
     $hits = Select-String -LiteralPath $f.FullName -Pattern "$SECRET_NAME|$SECRET_VALUE" -AllMatches -ErrorAction SilentlyContinue
     foreach ($h in $hits) {
@@ -145,7 +156,11 @@ foreach ($f in $targets) {
 # --- Gate 2b: untyped bypasses (any in TS, raw unwrap in Rust, raw interface{} in Go) ---
 $UNTYPED_TS = ':\s*any\b|<any>|\bas\s+any\b'
 $UNTYPED_RS = '\.unwrap\(\)'
-$UNTYPED_GO = 'interface\{\}'
+# `any` adalah alias IDENTIK untuk interface{} sejak Go 1.18, dan justru bentuk yang
+# dipakai kode modern. Memblokir bentuk lama sambil meloloskan bentuk baru berarti gate
+# ini menghukum gaya penulisan, bukan bypass tipenya. Lookaround mencegah kata seperti
+# "company"/"anything" dan literal string "any" ikut tertangkap.
+$UNTYPED_GO = 'interface\{\}|(?<![\w"])any(?![\w"])'
 
 foreach ($f in $targets) {
     $pattern = $null
@@ -154,8 +169,19 @@ foreach ($f in $targets) {
     elseif ($f.Extension -eq '.go')      { $pattern = $UNTYPED_GO }
 
     if ($pattern) {
+        # `.unwrap()` di dalam test Rust adalah idiom resmi, bukan bypass tipe. Memblokirnya
+        # membuat menulis test jadi pelanggaran mutu - hukuman yang persis terbalik dari niat
+        # gate ini. Kecualikan berkas test integrasi, dan pada berkas sumber abaikan segala
+        # sesuatu setelah #[cfg(test)] (konvensi Rust menaruh modul test di bagian bawah).
+        $testFrom = [int]::MaxValue
+        if ($f.Extension -eq '.rs') {
+            if (($f.FullName -replace '\\','/') -match '/tests/' -or $f.Name -match '_tests?\.rs$') { continue }
+            $cfg = Select-String -LiteralPath $f.FullName -Pattern '^\s*#\[cfg\(test\)\]' -List -ErrorAction SilentlyContinue
+            if ($cfg) { $testFrom = $cfg.LineNumber }
+        }
         $hits = Select-String -LiteralPath $f.FullName -Pattern $pattern -AllMatches -ErrorAction SilentlyContinue
         foreach ($h in $hits) {
+            if ($h.LineNumber -ge $testFrom) { continue }
             $line = $h.Line
             # Lewati komentar
             if ($line -match '^\s*(//|/\*|\*)') { continue }
@@ -166,8 +192,11 @@ foreach ($f in $targets) {
 }
 
 # --- Gate 2c: empty / tautological test detection ---
+# Dicocokkan pada PATH yang sudah dinormalkan, BUKAN pada $f.Name. Nama berkas tidak
+# pernah memuat '/', sehingga pola 'tests/.*\.rs' pada versi sebelumnya adalah cabang
+# mati yang tidak akan pernah menyala di sistem operasi mana pun.
 foreach ($f in $targets) {
-    if ($f.Name -match '(_test\.go|\.test\.(ts|js|tsx|jsx)|Test\.php|tests/.*\.rs|test_.*\.py)$') {
+    if (($f.FullName -replace '\\','/') -match '(_test\.go|\.test\.(ts|js|tsx|jsx)|Test\.php|/tests/.*\.rs|_tests?\.rs|test_.*\.py)$') {
         $lines = Get-Content -LiteralPath $f.FullName -ErrorAction SilentlyContinue
         for ($i = 0; $i -lt $lines.Count; $i++) {
             $l = $lines[$i]
@@ -179,6 +208,13 @@ foreach ($f in $targets) {
             # Deteksi TS/JS empty test: it('...', () => {})
             if ($l -match '(it|test)\s*\([^,]+,\s*(async\s*)?\(\s*\)\s*=>\s*\{\s*\}\)') {
                 $msg = "EMPTY_TEST   $($f.FullName):$($i+1)  Empty test closure detected"
+                if (Test-IsNew $f.FullName ($i+1)) { $violations.Add($msg) } else { $preexisting.Add($msg) }
+            }
+            # Deteksi Rust empty test: fn xxx() {} di berkas test.
+            # Sebelumnya TIDAK ADA detektor Rust sama sekali di sini - memperbaiki pola
+            # pencocokan berkas saja tidak cukup, karena isinya pun tidak pernah menguji Rust.
+            if ($f.Extension -eq '.rs' -and $l -match 'fn\s+\w+\([^)]*\)\s*\{\s*\}') {
+                $msg = "EMPTY_TEST   $($f.FullName):$($i+1)  Empty rust test function detected"
                 if (Test-IsNew $f.FullName ($i+1)) { $violations.Add($msg) } else { $preexisting.Add($msg) }
             }
             # Deteksi Python pass test: def test_xxx(): pass
@@ -200,7 +236,10 @@ $SRC_EXT = @('.go','.rs','.php','.ts','.tsx','.js','.jsx','.mjs','.cjs','.py','.
 if ($Transcript -and (Test-Path -LiteralPath $Transcript)) {
     $srcChanged = @($targets | Where-Object { $SRC_EXT -contains $_.Extension })
     if ($srcChanged.Count -gt 0) {
-        $TESTCMD = 'go test|cargo test|npm (run )?test|pnpm (run )?test|yarn test|php artisan test|phpunit|bin.pest|pytest|jest|vitest|mvn [^|]*test|gradle [^|]*test|dotnet test'
+        # `composer test` disebut eksplisit di AGENTS.md section 6 sebagai perintah sah, dan
+        # `cargo nextest` dipakai domain ci_cd_pipeline_cargo. Tanpa keduanya, agent yang
+        # PATUH pada aturan justru diblokir dengan tuduhan tidak pernah menjalankan test.
+        $TESTCMD = 'go test|cargo test|cargo nextest|composer test|npm (run )?test|pnpm (run )?test|yarn test|php artisan test|phpunit|bin.pest|pytest|jest|vitest|mvn [^|]*test|gradle [^|]*test|dotnet test'
         $found = Select-String -LiteralPath $Transcript -Pattern $TESTCMD -List -ErrorAction SilentlyContinue
         if (-not $found) {
             $names = ($srcChanged | Select-Object -First 5 | ForEach-Object { $_.Name }) -join ', '
@@ -236,11 +275,51 @@ if ($Full) {
 
     $projectUnits = @(Find-Manifests $Path)
 
-    $cmds = @{
-        go   = @('go vet ./...','go test -race ./...')
-        rust = @('cargo clippy --all-targets -- -D warnings','cargo test')
-        php  = @('vendor\bin\pint --test','php artisan test')
-        node = @('npm test --silent')
+    # Perkakas yang absen HARUS jadi SKIP, bukan GAGAL. Memeriksa nama biner saja tidak
+    # cukup: subperintah cargo bisa hilang walau `cargo` sendiri terpasang (cargo-audit,
+    # cargo-nextest). Tanpa pagar ini, `cargo audit` di mesin tanpa cargo-audit akan
+    # dilaporkan sebagai pelanggaran mutu, padahal yang kurang cuma perkakasnya.
+    function Test-ToolAvailable([string]$cmd) {
+        $parts = @($cmd -split ' ')
+        $exe = $parts[0]
+        if (-not (Get-Command $exe -ErrorAction SilentlyContinue) -and -not (Test-Path $exe)) { return $false }
+        if ($exe -eq 'cargo' -and $parts.Count -gt 1) {
+            if ($parts[1] -notin @('fmt','clippy','test','build','check','run')) {
+                $null = & cmd /c "cargo $($parts[1]) --version 2>&1"
+                if ($LASTEXITCODE -ne 0) { return $false }
+            }
+        }
+        return $true
+    }
+
+    # Diselaraskan dengan Quality Gate di SKILL.md tiap bundle mastery. Sebelumnya gate ini
+    # lebih longgar dari yang diwajibkan dokumen, padahal nestjs-mastery menyebutnya
+    # "gerbang primer" - klaim yang hanya benar bila isinya memang superset.
+    #
+    # `cargo miri test` SENGAJA tidak dipasang: rust-mastery mewajibkannya hanya bila kode
+    # menyentuh blok `unsafe`, butuh toolchain nightly, dan berjalan sangat lambat.
+    # Menjalankannya tanpa syarat akan menghukum setiap proyek Rust yang aman.
+    function Get-StackCommands([string]$stack, [string]$dir) {
+        if ($stack -eq 'go')   { return @('go vet ./...','golangci-lint run','go test -race ./...') }
+        if ($stack -eq 'rust') { return @('cargo fmt -- --check','cargo clippy --all-targets --all-features -- -D warnings','cargo test --all-targets --all-features','cargo audit') }
+        if ($stack -eq 'php')  { return @('vendor\bin\pint --test','vendor\bin\phpstan analyse --level=9 app','php artisan test','composer audit') }
+        if ($stack -eq 'node') {
+            # Hormati package manager proyek. nestjs-mastery mewajibkan corepack/pnpm;
+            # memaksa `npm` di repo pnpm memicu resolusi dependensi yang salah.
+            $pm = 'npm'
+            if (Test-Path (Join-Path $dir 'pnpm-lock.yaml'))  { $pm = 'pnpm' }
+            elseif (Test-Path (Join-Path $dir 'yarn.lock'))   { $pm = 'yarn' }
+            $list = @()
+            # tsc & eslint hanya dipasang bila konfigurasinya ada. Tanpa berkas config,
+            # keduanya keluar dengan exit code bukan nol dan memblokir secara palsu.
+            if (Test-Path (Join-Path $dir 'tsconfig.json')) { $list += 'npx tsc --noEmit' }
+            foreach ($e in @('eslint.config.js','eslint.config.mjs','eslint.config.cjs','.eslintrc','.eslintrc.js','.eslintrc.json','.eslintrc.cjs','.eslintrc.yml')) {
+                if (Test-Path (Join-Path $dir $e)) { $list += 'npx eslint .'; break }
+            }
+            $list += "$pm test --silent"
+            return $list
+        }
+        return @()
     }
 
     if ($projectUnits.Count -eq 0) {
@@ -249,9 +328,8 @@ if ($Full) {
         foreach ($unit in $projectUnits) {
             Push-Location $unit.Dir
             try {
-                foreach ($c in $cmds[$unit.Stack]) {
-                    $exe = ($c -split ' ')[0]
-                    if (-not (Get-Command $exe -ErrorAction SilentlyContinue) -and -not (Test-Path $exe)) {
+                foreach ($c in (Get-StackCommands $unit.Stack $unit.Dir)) {
+                    if (-not (Test-ToolAvailable $c)) {
                         Write-Output "SKIP  [$($unit.Rel)] $c  (perkakas tidak terpasang)"
                         continue
                     }
